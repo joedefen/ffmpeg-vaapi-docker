@@ -1,12 +1,21 @@
 #!/bin/bash
 set -x
+
+# Updated to match your established name
+IMAGE_NAME="joedefen/ffmpeg-vaapi-docker:latest"
+
+echo "--- Checking VA-API Capabilities ---"
+docker run --rm --device=/dev/dri:/dev/dri --entrypoint vainfo $IMAGE_NAME
+
+echo -e "\n--- Testing HEVC Hardware Encoding ---"
 docker run --rm \
     --device=/dev/dri:/dev/dri \
-    joedefen/ffmpeg-vaapi-docker:latest \
+    --ipc=host \
+    $IMAGE_NAME \
     -y \
     -init_hw_device vaapi=va:/dev/dri/renderD128 \
     -filter_hw_device va \
-    -f lavfi -i nullsrc=s=128x128:d=1 \
+    -f lavfi -i nullsrc=s=1920x1080:d=10 \
     -vf 'format=nv12,hwupload' \
     -c:v hevc_vaapi \
-    -frames:v 1 -f null -
+    -f null -

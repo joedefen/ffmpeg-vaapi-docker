@@ -69,12 +69,13 @@ Run FFmpeg with hardware acceleration:
 ```bash
 docker run --rm \
     --device=/dev/dri:/dev/dri \
-    -v $(pwd):/workspace \
-    -w /workspace \
-    joedefen/ffmpeg-vaapi-docker:latest \
+    --ipc=host \
+    -v $(pwd):/workspace -w /workspace \
+    -u $(id -u):$(id -g) \
+    joedefen/rmbloat-ffmpeg:latest \
     -i input.mp4 \
-    -c:v h264_vaapi \
-    output.mp4
+    -c:v hevc_vaapi -qp 23 \
+    output.mkv
 ```
 
 ### Test Hardware Acceleration
