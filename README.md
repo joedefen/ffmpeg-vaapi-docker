@@ -6,8 +6,9 @@ FFmpeg with VA-API hardware acceleration for Intel Quick Sync and AMD graphics
 
 This Docker image provides FFmpeg with VA-API (Video Acceleration API) support, enabling hardware-accelerated video encoding and decoding on Intel and AMD GPUs. It's designed to work out-of-the-box on Linux systems with compatible hardware.
 
-The image is based on Ubuntu 25.10 and includes:
-- FFmpeg 7.1+ with VA-API support
+The image is based on Ubuntu 26.04 LTS and includes:
+- FFmpeg from the Ubuntu 26.04 archive (8.0.1 at the time of writing, November 2026)
+  with VA-API support; the exact version follows whatever the base image provides
 - Intel Media VA driver (non-free)
 - Intel VPL (Video Processing Library)
 - VA-API verification tools
@@ -182,6 +183,16 @@ Build the image:
 ./build.sh
 # or manually:
 docker build -t joedefen/ffmpeg-vaapi-docker:latest .
+```
+
+The base image is pinned by digest in the [`Dockerfile`](Dockerfile) for reproducible
+builds. To pick up Ubuntu point releases and security updates, refresh the digest
+deliberately:
+
+```bash
+docker pull ubuntu:26.04
+docker inspect ubuntu:26.04 --format '{{index .RepoDigests 0}}'
+# then update the FROM line in the Dockerfile
 ```
 
 Test the build:

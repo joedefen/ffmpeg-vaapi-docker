@@ -1,5 +1,5 @@
-# Use the Ubuntu 25.10 development codename, Questing Quokka
-FROM ubuntu:questing
+# Ubuntu 26.04 LTS (Resolute Raccoon), 26.04.1; digest-pinned for reproducible builds (see README, "Building Locally")
+FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
 
 # 1. Install drivers and runtime libraries
 RUN apt update && \
