@@ -13,6 +13,10 @@ The image is based on Ubuntu 26.04 LTS and includes:
 - Intel VPL (Video Processing Library)
 - VA-API verification tools
 
+The image is about 840 MB and runs as an unprivileged user (uid 1000). The Intel
+driver packages account for roughly 41 MB and are installed unconditionally, so
+the same image works on both Intel and AMD hosts.
+
 ## Hardware Requirements
 
 ### Supported Hardware
@@ -57,6 +61,23 @@ groups
 
 You should see devices like `renderD128`, `renderD129`, etc., and your user should be in the `video` or `render` group.
 
+### Non-root user and device permissions
+
+The container runs as uid/gid 1000 (`ubuntu`), which matches the first user on
+most desktop Linux installs. For VA-API access it needs the host's render GID as
+a supplementary group; the image already includes a `render` group with GID 992,
+which matches most Debian/Ubuntu hosts.
+
+If your host's render group has a different GID, add it to every `docker run`
+command below:
+
+```bash
+--group-add "$(getent group render | cut -d: -f3)"
+```
+
+On SELinux hosts (Fedora, RHEL), also add `--security-opt label=disable`, and add
+`:z` to bind mounts that the container must write to.
+
 ## Quick Start
 
 ### Pull the Image
@@ -72,9 +93,7 @@ Run FFmpeg with hardware acceleration:
 ```bash
 docker run --rm \
     --device=/dev/dri:/dev/dri \
-    --ipc=host \
     -v $(pwd):/workspace -w /workspace \
-    -u $(id -u):$(id -g) \
     joedefen/ffmpeg-vaapi-docker:latest \
     -i input.mp4 \
     -c:v hevc_vaapi -qp 23 \
@@ -201,6 +220,76 @@ Test the build:
 ./test.sh
 ```
 
+To publish, [`push.sh`](push.sh) builds with `--pull` and pushes both `latest`
+and an immutable date+commit tag; set `VERSION` to override that tag. Both
+scripts honour `IMAGE` and `TAG` environment variables.
+
+## VA-API Details Worth Knowing
+
+### Driver selection (`LIBVA_DRIVER_NAME`)
+
+The image deliberately does not set `LIBVA_DRIVER_NAME`, so libva auto-detects:
+`iHD` (intel-media-driver) on Intel, `radeonsi` (Mesa) on AMD. Auto-detection can
+choose the wrong backend on hybrid or multi-GPU systems, or when another Intel
+driver is present. Override it explicitly:
+
+```bash
+docker run --rm -e LIBVA_DRIVER_NAME=iHD \
+    --device=/dev/dri:/dev/dri \
+    --group-add "$(getent group render | cut -d: -f3)" \
+    --entrypoint vainfo \
+    joedefen/ffmpeg-vaapi-docker:latest
+```
+
+Use `LIBVA_DRIVER_NAME=radeonsi` on AMD. If `vainfo` reports no profiles, the
+driver choice is the usual culprit.
+
+### Why the "non-free" Intel driver
+
+Ubuntu ships `intel-media-va-driver` (DFSG-free) and
+`intel-media-va-driver-non-free`; the latter includes additional codec components
+that do not meet Debian's free-software guidelines. This image uses the non-free
+variant for broader codec coverage on Intel hardware.
+
+### Bitrate and quality control (`-qp`, `-rc_mode`)
+
+VA-API encoders default to constant QP. `-qp` takes 0-51 (lower is better; 20-25
+is a reasonable starting point) and maps directly to the encoder's QP, so the
+same value does not mean the same quality across codecs. For bitrate targeting,
+pick a rate-control mode:
+
+```bash
+# Constant quality (default behaviour)
+-c:v hevc_vaapi -rc_mode CQP -qp 24
+
+# Variable bitrate with a target
+-c:v hevc_vaapi -rc_mode VBR -b:v 6M -maxrate 8M
+
+# Constant bitrate
+-c:v hevc_vaapi -rc_mode CBR -b:v 6M
+```
+
+Not every mode is available for every codec and GPU; run
+`ffmpeg -h encoder=hevc_vaapi` to see what the build supports.
+
+### Why `format=nv12,hwupload`
+
+VA-API encoders only accept GPU surfaces in NV12 (8-bit) or P010 (10-bit). When
+decoding in software, frames live in system memory, so `format=nv12` converts
+them and `hwupload` moves them to the GPU. With hardware decode
+(`-hwaccel_output_format vaapi`) frames already live on the GPU and the upload
+filter is unnecessary.
+
+### Proving it is really accelerated
+
+- Add `-v verbose` and look for the VA-API device FFmpeg opens.
+- CPU usage should stay far below software `libx264`/`libx265` for the same
+  input; compare with `docker stats` or `time`.
+- `-benchmark` reports throughput; supported hardware should encode 1080p HEVC
+  well above real time.
+- `vainfo` is the ground truth: `VAEntrypointEnc*` means encoding is supported,
+  while `VAEntrypointVLD` alone means decode only.
+
 ## Troubleshooting
 
 ### Permission Denied Errors
@@ -209,12 +298,19 @@ If you see permission errors accessing `/dev/dri/`:
 
 ```bash
 # Add your user to the video and render groups
-sudo usermod -aG video,render $USER
-
-# Log out and back in, or run:
-newgrp video
-newgrp render
+sudo usermod -aG video,render "$USER"
 ```
+
+Group membership is only re-read at login, so log out and back in. To use the
+new membership in the current shell without logging out, run a single command
+with the group applied:
+
+```bash
+sg render -c 'vainfo'
+```
+
+If the container itself still cannot open the device, pass the host render GID:
+`--group-add "$(getent group render | cut -d: -f3)"`.
 
 ### No Hardware Acceleration
 
@@ -255,16 +351,21 @@ Quality may be slightly lower than software encoders at equivalent bitrates, but
 
 Codec support varies by hardware generation. Common codecs:
 
-- **H.264 (AVC)**: Most Intel 4th gen+ and AMD APUs
-- **HEVC (H.265)**: Intel 6th gen+ and newer AMD
-- **VP9**: Intel 9th gen+ (limited support)
-- **AV1**: Intel 11th gen+ (Arc GPUs), newer AMD
+- **H.264 (AVC)**: Intel 5th gen+ (Broadwell/iHD) and AMD APUs
+- **HEVC (H.265)**: Intel 6th gen+ (Skylake) and newer AMD
+- **VP9**: Intel 9th gen+ (limited support) and RDNA+ AMD
+- **AV1**: Intel 11th gen+ (Arc GPUs) and RDNA 3+ AMD
 
 Check your specific hardware for exact codec support.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+The repository's own files are MIT licensed - see [LICENSE](LICENSE).
+
+The container image also redistributes third-party software, including the
+non-free Intel media driver and a GPL-enabled FFmpeg build. The MIT license does
+not cover those components; see [NOTICE](NOTICE) for the component list, and
+`/usr/share/doc/<package>/copyright` inside the image for authoritative texts.
 
 ## Contributing
 

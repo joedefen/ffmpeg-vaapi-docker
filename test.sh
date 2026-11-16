@@ -31,9 +31,12 @@ printf 'Image:         %s\n' "${IMAGE_NAME}"
 printf 'Render device: %s\n' "${RENDER_DEV}"
 printf 'Duration:      %s\n' "${DURATION}"
 
+RENDER_GID="$(stat -c '%g' "${RENDER_DEV}")"
+
 printf '\n--- Checking VA-API Capabilities ---\n'
 vainfo_out="$(docker run --rm \
     --device "${RENDER_DEV}:${RENDER_DEV}" \
+    --group-add "${RENDER_GID}" \
     --entrypoint vainfo \
     "${IMAGE_NAME}")"
 printf '%s\n' "${vainfo_out}"
@@ -50,6 +53,7 @@ grep -Eq 'VAProfileHEVCMain[[:space:]]*:[[:space:]]*VAEntrypointEnc' <<<"${vainf
 printf '\n--- Testing HEVC Hardware Encoding ---\n'
 docker run --rm \
     --device "${RENDER_DEV}:${RENDER_DEV}" \
+    --group-add "${RENDER_GID}" \
     "${IMAGE_NAME}" \
     -hide_banner \
     -loglevel warning \

@@ -1,3 +1,8 @@
 #!/bin/bash
+set -euo pipefail
+
+IMAGE="${IMAGE:-joedefen/ffmpeg-vaapi-docker}"
+TAG="${TAG:-latest}"
+
 set -x
-docker build -t joedefen/ffmpeg-vaapi-docker:latest .
+docker build --pull -t "${IMAGE}:${TAG}" "$@" .

@@ -1,7 +1,16 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-(set -x; docker build -t joedefen/ffmpeg-vaapi-docker:latest .)
-(set -x ; docker push joedefen/ffmpeg-vaapi-docker:latest)
+IMAGE="${IMAGE:-joedefen/ffmpeg-vaapi-docker}"
+TAG="${TAG:-latest}"
+if [[ -z "${VERSION:-}" ]]; then
+    VERSION="$(date -u +%Y.%m.%d)-$(git rev-parse --short=7 HEAD 2>/dev/null || echo nogit)"
+fi
 
-echo "Successfully pushed joedefen/ffmpeg-vaapi-docker:latest"
+set -x
+docker build --pull -t "${IMAGE}:${TAG}" -t "${IMAGE}:${VERSION}" .
+docker push "${IMAGE}:${TAG}"
+docker push "${IMAGE}:${VERSION}"
+set +x
+
+echo "Successfully pushed ${IMAGE}:${TAG} and ${IMAGE}:${VERSION}"
