@@ -17,9 +17,11 @@ The image is based on Ubuntu 25.10 and includes:
 ### Supported Hardware
 
 **Intel:**
-- 4th generation Core processors (Haswell) or newer with integrated graphics
-- Newer generations recommended for broader codec support (HEVC requires 6th gen+)
-- Intel Arc discrete GPUs
+- 5th generation Core processors (Broadwell, general availability ~early 2015) or newer
+  with integrated graphics — this image ships only the iHD driver, which starts at Gen8
+- HEVC encoding requires 6th generation (Skylake, ~late 2015) or newer
+- Newer generations recommended for broader codec support (AV1 encode needs 11th gen / Arc)
+- Intel Arc discrete GPUs (Alchemist, ~2022)
 
 **AMD:**
 - APUs with integrated Vega or RDNA graphics
@@ -72,7 +74,7 @@ docker run --rm \
     --ipc=host \
     -v $(pwd):/workspace -w /workspace \
     -u $(id -u):$(id -g) \
-    joedefen/rmbloat-ffmpeg:latest \
+    joedefen/ffmpeg-vaapi-docker:latest \
     -i input.mp4 \
     -c:v hevc_vaapi -qp 23 \
     output.mkv
