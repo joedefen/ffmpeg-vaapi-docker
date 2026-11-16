@@ -1,0 +1,24 @@
+# Third-Party Notices
+
+The source files in this repository are licensed under the MIT License (see
+[LICENSE](LICENSE)). The container image built from this repository additionally
+bundles third-party software that remains under its own licenses; the MIT
+License does **not** extend to those components.
+
+| Component | Packages | License |
+| --- | --- | --- |
+| FFmpeg | `ffmpeg` | LGPL-2.1-or-later corpus, built with `--enable-gpl` (GPL-2.0-or-later applies to the resulting binaries) |
+| libva | `libva2`, `libva-drm2` | MIT |
+| VA-API tools | `vainfo` | MIT |
+| Intel media driver | `intel-media-va-driver-non-free` | MIT-based driver with additional non-free components as packaged by Ubuntu |
+| Intel oneVPL | `libvpl2` | MIT |
+| Mesa (radeonsi) | `mesa-va-drivers` | MIT |
+| CA certificates | `ca-certificates` | MPL-2.0 |
+| Ubuntu base image | `ubuntu:26.04` | Mixed free licenses |
+
+Authoritative license texts ship inside the image under
+`/usr/share/doc/<package>/copyright`, and FFmpeg's own license is at
+`/usr/share/doc/ffmpeg/copyright`.
+
+If you redistribute this image, review the non-free Intel media driver terms
+before doing so.
