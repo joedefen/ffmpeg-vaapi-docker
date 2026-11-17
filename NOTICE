@@ -18,7 +18,30 @@ License does **not** extend to those components.
 
 Authoritative license texts ship inside the image under
 `/usr/share/doc/<package>/copyright`, and FFmpeg's own license is at
-`/usr/share/doc/ffmpeg/copyright`.
+`/usr/share/doc/ffmpeg/copyright`. This file and [LICENSE](LICENSE) are copied
+into the image at `/licenses/NOTICE` and `/licenses/LICENSE`, so a pulled copy
+carries the terms it is distributed under.
 
-If you redistribute this image, review the non-free Intel media driver terms
-before doing so.
+## If you redistribute this image
+
+Two different obligations attach to the image, and only one of them is about
+"non-free" terms.
+
+**1. GPL source for FFmpeg.** Because the binaries are built with
+`--enable-gpl`, they are GPL-2.0-or-later, and redistributing them requires
+offering their corresponding source. That source is Ubuntu's `ffmpeg` source
+package — this repository does not patch, configure or rebuild FFmpeg, so the
+packaged source *is* the corresponding source, in full. Concretely:
+
+- the version inside the image is what `dpkg -s ffmpeg` reports, and
+  `/usr/share/doc/ffmpeg/copyright` names the source package;
+- the source is published by Ubuntu in its archive and on Launchpad, and can be
+  fetched with `apt-get source ffmpeg` from a matching Ubuntu container once a
+  `deb-src` line is enabled;
+- if you publish the image to a registry, you are the redistributor: keep this
+  notice alongside it, or state the source location yourself.
+
+**2. Non-free terms for the Intel media driver.** `intel-media-va-driver-non-free`
+is Ubuntu's packaging of the MIT-licensed iHD driver together with additional
+non-free components. Review those terms before redistributing; the package's own
+copyright file is the authority, not this summary.

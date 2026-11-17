@@ -403,6 +403,36 @@ It refuses to run on a tree with uncommitted changes, builds through
 failure can never leave `latest` pointing at an untested image. Both scripts
 honour `IMAGE` and `TAG`.
 
+The image carries `/licenses/LICENSE` and `/licenses/NOTICE`, so a pulled copy
+states the terms it is distributed under — the GPL source pointer for the FFmpeg
+binaries and the non-free terms for the Intel driver — without sending anyone
+back to GitHub. Package copyrights stay where dpkg puts them, under
+`/usr/share/doc/<package>/copyright`.
+
+#### Publishing with an SBOM and provenance
+
+`push.sh` publishes with plain `docker build`/`docker push`, so it attaches no
+attestations. If you want them, build and push with buildx instead:
+
+```bash
+docker buildx build \
+    --sbom=true --provenance=true \
+    --platform linux/amd64 \
+    --push \
+    -t joedefen/ffmpeg-vaapi-docker:latest .
+```
+
+The pushed tag then becomes an OCI index holding the image manifest plus an
+attestation manifest: an SPDX-2.3 document (298 packages on the current base)
+and SLSA provenance v1. Inspect with:
+
+```bash
+docker buildx imagetools inspect joedefen/ffmpeg-vaapi-docker:latest
+```
+
+`attestation-manifest` entries appear beside the `linux/amd64` image entry.
+Verified with buildx v0.37 against a throwaway local registry.
+
 ## VA-API Details Worth Knowing
 
 ### Driver selection (`LIBVA_DRIVER_NAME`)
@@ -553,8 +583,10 @@ The repository's own files are MIT licensed - see [LICENSE](LICENSE).
 
 The container image also redistributes third-party software, including the
 non-free Intel media driver and a GPL-enabled FFmpeg build. The MIT license does
-not cover those components; see [NOTICE](NOTICE) for the component list, and
-`/usr/share/doc/<package>/copyright` inside the image for authoritative texts.
+not cover those components; see [NOTICE](NOTICE) for the component list and the
+GPL source-availability statement, and `/usr/share/doc/<package>/copyright`
+inside the image for authoritative texts. Both files also ship inside the image
+at `/licenses/LICENSE` and `/licenses/NOTICE`.
 
 There is no warranty and no support commitment; see
 [Purpose and Support Scope](#purpose-and-support-scope).

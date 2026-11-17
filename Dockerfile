@@ -49,7 +49,13 @@ RUN apt-get update && \
 # 2. No LIBVA_DRIVER_NAME is set: libva auto-detects Intel (iHD), AMD
 #    (radeonsi), or the generic driver at runtime.
 
-# 3. Drop privileges. The Ubuntu base already provides the "ubuntu" user at
+# 3. Licence and notice files travel with the image, so a pulled copy states the
+#    terms it is distributed under (GPL source pointer, non-free driver terms)
+#    without sending anyone back to GitHub. Package copyrights stay where dpkg
+#    puts them, under /usr/share/doc.
+COPY NOTICE LICENSE /licenses/
+
+# 4. Drop privileges. The Ubuntu base already provides the "ubuntu" user at
 #    uid/gid 1000, which matches the first user on most desktop installs.
 #    GID 992 is the common "render" GID on Debian/Ubuntu hosts; hosts that use
 #    a different GID should pass --group-add "$(getent group render | cut -d: -f3)".
@@ -58,7 +64,7 @@ RUN groupadd --system --gid 992 render \
 
 USER ubuntu
 
-# 4. Metadata. The base image carries Canonical's OCI labels ("ubuntu", "The
+# 5. Metadata. The base image carries Canonical's OCI labels ("ubuntu", "The
 #    Ubuntu container image maintained by Canonical..."), which are wrong for
 #    this image, so override them and record which base was used. The build
 #    arguments are passed by build.sh and push.sh; the defaults apply to a bare
