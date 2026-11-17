@@ -332,9 +332,21 @@ docker run --rm \
     --entrypoint vainfo \
     joedefen/ffmpeg-vaapi-docker:latest
 ```
+---
+---
+
+
+## Building, Testing, Publishing
+> Quick start:
+```
+git clone https://github.com/joedefen/ffmpeg-vaapi-docker.git
+cd ffmpeg-vaapi-docker
+./build.sh
+./test.sh
+./push.sh
+```
 
 ## Building Locally
-
 Clone the repository:
 
 ```bash
@@ -377,8 +389,8 @@ git diff Dockerfile
 ```
 
 If step 2 changes nothing, the pin is already current — note the check date in
-[`tests/AUDIT.md`](tests/AUDIT.md) and move on. If it does change, commit the new
-digest on its own so the base-image bump is individually reviewable.
+your own records and move on. If it does change, commit the new digest on its own
+so the base-image bump is individually reviewable.
 
 ### Testing a local build
 
@@ -443,6 +455,9 @@ docker buildx imagetools inspect joedefen/ffmpeg-vaapi-docker:latest
 
 `attestation-manifest` entries appear beside the `linux/amd64` image entry.
 Verified with buildx v0.37 against a throwaway local registry.
+
+---
+---
 
 ## VA-API Details Worth Knowing
 

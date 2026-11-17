@@ -11,7 +11,7 @@ TAG="${TAG:-latest}"
 
 # The immutable tag claims to describe a commit, so refuse to publish content
 # that commit does not contain. Untracked files are harmless here:
-# .dockerignore keeps tests/ and *.md out of the build context.
+# .dockerignore keeps tmp/ and *.md out of the build context.
 git_sha=""
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
     git_sha="$(git rev-parse --short=7 HEAD)"
