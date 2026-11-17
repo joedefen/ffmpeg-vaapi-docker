@@ -246,6 +246,37 @@ Either keep `-w /workspace` as above, or mount a volume and use absolute paths
 inside it (`-v "$(pwd)":/workspace … /workspace/output.mkv`). The second form needs
 no `-w`, which helps when input and output live in different directories.
 
+### Compatibility with older rmbloat releases
+
+[rmbloat](https://github.com/joedefen/rmbloat) is the pipeline this image was
+built for. Releases up to 1.0.4 built their container command without naming
+the binary — they passed the low-priority wrapper where the command belongs:
+
+```text
+docker run ... IMAGE ionice -c3 nice -n20 -y -progress pipe:2 ... -i in.mkv ...
+```
+
+With `ENTRYPOINT ["ffmpeg"]` (which every example here and rmbloat's probes
+rely on) ffmpeg parsed `-c3` as its own option and exited with
+`Unrecognized option 'c3'`; with no entry point at all the wrapper had no
+ffmpeg to run.
+
+The image's entry point is therefore a small shim that keeps both shapes
+working:
+
+- the exact legacy prefix `ionice -c3 nice -n20` gets the missing `ffmpeg`
+  inserted after it, so rmbloat <= 1.0.4 works unchanged;
+- anything that starts with an ffmpeg option, or that names its program
+  explicitly, goes straight to `ffmpeg`.
+
+rmbloat 1.0.5 and later choose the program with `--entrypoint` themselves, so
+the shim is bypassed; `--entrypoint vainfo` and `--entrypoint ffprobe` behave
+exactly as before, and no documented invocation changes.
+
+The match is deliberately narrow: only that exact four-word prefix is
+translated, and no arbitrary command is ever executed. The shim exists for
+backwards compatibility and can be removed when 1.0.4 is no longer in use.
+
 ### Test Hardware Acceleration
 
 Verify HEVC encoding works:
@@ -394,10 +425,12 @@ so the base-image bump is individually reviewable.
 
 ### Testing a local build
 
-[`test.sh`](test.sh) runs two things against an image already on the machine: a
-synthetic 1080p null-source encode that proves the encoder works, and then the
+[`test.sh`](test.sh) runs three things against an image already on the machine: a
+synthetic 1080p null-source encode that proves the encoder works, the
 [Basic Usage](#basic-usage) command itself against a real file in a temp
-directory, checking that the output is non-empty and is the codec it expected.
+directory, checking that the output is non-empty and is the codec it expected,
+and a compatibility pass that runs both the legacy command form used by rmbloat
+<= 1.0.4 and the explicit `--entrypoint` form used from 1.0.5 on.
 Three environment variables change what it does:
 
 | Variable | Default | Effect |

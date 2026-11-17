@@ -55,7 +55,16 @@ RUN apt-get update && \
 #    puts them, under /usr/share/doc.
 COPY NOTICE LICENSE /licenses/
 
-# 4. Drop privileges. The Ubuntu base already provides the "ubuntu" user at
+# 4. Entry point.  The image exists to run ffmpeg, but rmbloat releases up to
+#    1.0.4 put their low-priority wrapper where the command belongs and never
+#    named the binary (``IMAGE ionice -c3 nice -n20 -y ...``), so a plain
+#    ``ENTRYPOINT ["ffmpeg"]`` made ffmpeg parse ``-c3`` as its own option.
+#    entrypoint.sh inserts the missing ``ffmpeg`` for that exact shape and
+#    forwards everything else unchanged.
+COPY entrypoint.sh /usr/local/bin/ffmpeg-entrypoint
+RUN chmod 0755 /usr/local/bin/ffmpeg-entrypoint
+
+# 5. Drop privileges. The Ubuntu base already provides the "ubuntu" user at
 #    uid/gid 1000, which matches the first user on most desktop installs.
 #    GID 992 is the common "render" GID on Debian/Ubuntu hosts; hosts that use
 #    a different GID should pass --group-add "$(getent group render | cut -d: -f3)".
@@ -64,7 +73,7 @@ RUN groupadd --system --gid 992 render \
 
 USER ubuntu
 
-# 5. Metadata. The base image carries Canonical's OCI labels ("ubuntu", "The
+# 6. Metadata. The base image carries Canonical's OCI labels ("ubuntu", "The
 #    Ubuntu container image maintained by Canonical..."), which are wrong for
 #    this image, so override them and record which base was used. The build
 #    arguments are passed by build.sh and push.sh; the defaults apply to a bare
@@ -84,5 +93,5 @@ LABEL org.opencontainers.image.title="ffmpeg-vaapi-docker" \
       org.opencontainers.image.base.name="docker.io/library/ubuntu:26.04" \
       org.opencontainers.image.base.digest="sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db"
 
-ENTRYPOINT ["ffmpeg"]
+ENTRYPOINT ["/usr/local/bin/ffmpeg-entrypoint"]
 CMD ["--help"]

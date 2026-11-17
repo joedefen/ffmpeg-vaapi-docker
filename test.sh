@@ -134,4 +134,29 @@ actual_codec="$(docker run --rm \
 printf 'Documented example output: %s, %s bytes\n' "${actual_codec}" \
     "$(stat -c %s "${workdir}/output.mkv")"
 
+# Older rmbloat releases (<= 1.0.4) put the priority wrapper where the command
+# belongs and never named ffmpeg.  The entrypoint translates that exact shape;
+# newer releases name the program with --entrypoint themselves.  Both must keep
+# working, as must a bare ffmpeg option.  The encodes below use lavfi and the
+# null muxer, so they need neither a GPU nor a writable mount.
+printf '\n--- Testing rmbloat <= 1.0.4 compatibility ---\n'
+docker run --rm "${IMAGE_NAME}" \
+    ionice -c3 nice -n20 \
+    -hide_banner -loglevel error -y \
+    -f lavfi -i "testsrc=s=64x64:d=1" \
+    -c:v libx264 -preset ultrafast \
+    -f null -
+
+docker run --rm --entrypoint ionice "${IMAGE_NAME}" \
+    -c3 nice -n20 ffmpeg \
+    -hide_banner -loglevel error -y \
+    -f lavfi -i "testsrc=s=64x64:d=1" \
+    -c:v libx264 -preset ultrafast \
+    -f null -
+
+docker run --rm "${IMAGE_NAME}" -hide_banner -version |
+    grep -q '^ffmpeg version ' ||
+    fail "a bare ffmpeg option did not reach ffmpeg through the entrypoint"
+printf 'Legacy and explicit entrypoint forms both ran ffmpeg.\n'
+
 printf '\nAll VA-API checks passed (%s).\n' "${encoder}"
