@@ -38,5 +38,14 @@ if [ -n "${target_arch}" ] && [ "${target_arch}" != "amd64" ]; then
     exit 1
 fi
 
+# Label values for the image metadata (see the LABEL block in the Dockerfile).
+build_args=(
+    --build-arg "IMAGE_VERSION=${TAG}"
+    --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+)
+if git rev-parse --short HEAD >/dev/null 2>&1; then
+    build_args+=(--build-arg "GIT_REVISION=$(git rev-parse --short=12 HEAD)")
+fi
+
 set -x
-docker build --pull -t "${IMAGE}:${TAG}" "${args[@]}" .
+docker build --pull -t "${IMAGE}:${TAG}" "${build_args[@]}" "${args[@]}" .

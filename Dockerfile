@@ -21,10 +21,13 @@ RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     fi
 
 # 1. Install drivers and runtime libraries.
-# Intel-specific drivers (Alder Lake / 12th Gen+); ~41 MB installed.
-# mesa-va-drivers keeps the image usable on AMD/Generic GPUs.
+# The Intel media driver (iHD) covers Gen8+ graphics; ~40 MB installed.
 # libva-drm2 lets VA-API talk to the DRM (Direct Rendering Manager).
 # ca-certificates is required if ffmpeg needs to pull via https.
+# mesa-va-drivers keeps the image usable on AMD/Generic GPUs. It is a virtual
+# package name that resolves to mesa-libgallium, which ffmpeg's own graphics
+# dependencies (libgbm1, libegl-mesa0) already pull in; listing it states the
+# intent and changes nothing about the image's size.
 # No package versions are pinned: each build picks up the current archive
 # contents, including security updates for ffmpeg and the drivers.
 RUN apt-get update && \
@@ -49,6 +52,26 @@ RUN groupadd --system --gid 992 render \
     && usermod -aG render ubuntu
 
 USER ubuntu
+
+# 4. Metadata. The base image carries Canonical's OCI labels ("ubuntu", "The
+#    Ubuntu container image maintained by Canonical..."), which are wrong for
+#    this image, so override them and record which base was used. The build
+#    arguments are passed by build.sh and push.sh; the defaults apply to a bare
+#    `docker build .`.
+ARG IMAGE_VERSION="dev"
+ARG GIT_REVISION="unknown"
+ARG BUILD_DATE="unknown"
+LABEL org.opencontainers.image.title="ffmpeg-vaapi-docker" \
+      org.opencontainers.image.description="FFmpeg 8 with VA-API hardware encoding on Ubuntu 26.04 (Intel iHD and AMD Mesa drivers), linux/amd64 only" \
+      org.opencontainers.image.url="https://github.com/joedefen/ffmpeg-vaapi-docker" \
+      org.opencontainers.image.source="https://github.com/joedefen/ffmpeg-vaapi-docker" \
+      org.opencontainers.image.documentation="https://github.com/joedefen/ffmpeg-vaapi-docker#readme" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${GIT_REVISION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.base.name="docker.io/library/ubuntu:26.04" \
+      org.opencontainers.image.base.digest="sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db"
 
 ENTRYPOINT ["ffmpeg"]
 CMD ["--help"]

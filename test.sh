@@ -44,13 +44,21 @@ printf '%s\n' "${vainfo_out}"
 grep -q '^vainfo: Driver version:' <<<"${vainfo_out}" ||
     fail "vainfo did not report a driver version"
 
-grep -q 'VAProfileHEVCMain' <<<"${vainfo_out}" ||
-    fail "this GPU/driver does not advertise HEVC support"
+# Encode capability varies by hardware generation, and the README documents
+# cards (Intel Gen8/9, AMD Polaris) that encode H.264 but not HEVC. Test an
+# encoder this GPU actually advertises instead of assuming HEVC.
+if grep -Eq 'VAProfileHEVCMain[[:space:]]*:[[:space:]]*VAEntrypointEnc' <<<"${vainfo_out}"; then
+    encoder=hevc_vaapi
+elif grep -Eq 'VAProfileH264High[[:space:]]*:[[:space:]]*VAEntrypointEnc' <<<"${vainfo_out}"; then
+    encoder=h264_vaapi
+    printf '\nNote: this GPU advertises no HEVC encoder; testing H.264 instead.\n' >&2
+    printf '      The image will not satisfy its main use case (HEVC re-encoding)\n' >&2
+    printf '      on this hardware.\n' >&2
+else
+    fail "this GPU/driver advertises neither HEVC nor H.264 encoding entrypoints"
+fi
 
-grep -Eq 'VAProfileHEVCMain[[:space:]]*:[[:space:]]*VAEntrypointEnc' <<<"${vainfo_out}" ||
-    fail "this GPU/driver does not advertise HEVC encoding (only decoding)"
-
-printf '\n--- Testing HEVC Hardware Encoding ---\n'
+printf '\n--- Testing %s Hardware Encoding ---\n' "${encoder}"
 docker run --rm \
     --device "${RENDER_DEV}:${RENDER_DEV}" \
     --group-add "${RENDER_GID}" \
@@ -62,7 +70,7 @@ docker run --rm \
     -filter_hw_device va \
     -f lavfi -i "nullsrc=s=1920x1080:d=${DURATION}" \
     -vf 'format=nv12,hwupload' \
-    -c:v hevc_vaapi \
+    -c:v "${encoder}" \
     -f null -
 
-printf '\nAll VA-API checks passed.\n'
+printf '\nAll VA-API checks passed (%s).\n' "${encoder}"

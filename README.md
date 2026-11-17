@@ -20,9 +20,16 @@ The image is based on Ubuntu 26.04 LTS and includes:
 - Intel VPL (Video Processing Library)
 - VA-API verification tools
 
-The image is about 840 MB and runs as an unprivileged user (uid 1000). The Intel
-driver packages account for roughly 41 MB and are installed unconditionally, so
-the same image works on both Intel and AMD hosts.
+The image is about 840 MB and runs as an unprivileged user (uid 1000). Almost all
+of that size is inherited from Ubuntu's own packaging rather than chosen here:
+`libllvm21` (~132 MiB installed) and `mesa-libgallium` (~44 MiB) arrive through
+FFmpeg's graphics dependencies, and the Intel media driver adds ~40 MiB. The Intel
+driver is installed unconditionally, so the same image works on both Intel and AMD
+hosts.
+
+`mesa-va-drivers` is listed explicitly, but it is a virtual package name that
+resolves to `mesa-libgallium`, which is already present; removing the line leaves
+the image byte-for-byte the same size. It stays as a statement of intent.
 
 ## Purpose and Support Scope
 
