@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Publish two tags: an immutable <date>-<commit> tag and a moving tag
+# Publish two tags: an immutable <UTC date>.<HH.MM>-<commit> tag and a moving tag
 # (TAG, "latest" by default). VERSION overrides the immutable tag name.
 
 cd "$(dirname "$0")"
@@ -9,16 +9,17 @@ cd "$(dirname "$0")"
 IMAGE="${IMAGE:-joedefen/ffmpeg-vaapi-docker}"
 TAG="${TAG:-latest}"
 
-# The immutable tag claims to describe a commit, so refuse to publish content
-# that commit does not contain. Untracked files are harmless here:
-# .dockerignore keeps tmp/ and *.md out of the build context.
+# The immutable tag claims to describe a commit, so nothing may be published
+# that commit does not contain: not modified files, not staged files, not even
+# untracked ones. Only ignored paths (tmp/) are allowed to exist, because they
+# never enter the build context.
 git_sha=""
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
     git_sha="$(git rev-parse --short=7 HEAD)"
-    if ! git diff --quiet || ! git diff --cached --quiet; then
-        echo "ERROR: the working tree has uncommitted changes." >&2
-        echo "       A tag named after ${git_sha} would not describe what is published." >&2
-        echo "       Commit or stash first:" >&2
+    if [[ -n "$(git status --porcelain)" ]]; then
+        echo "ERROR: the working tree is not clean; refusing to publish." >&2
+        echo "       A tag named after ${git_sha} would not describe what is shipped." >&2
+        echo "       Commit or stash everything first:" >&2
         git status --short >&2
         exit 1
     fi
@@ -30,7 +31,7 @@ if [[ -z "${VERSION:-}" ]]; then
         echo "       Set VERSION explicitly to publish from a tarball." >&2
         exit 1
     fi
-    VERSION="$(date -u +%Y.%m.%d)-${git_sha}"
+    VERSION="$(date -u +%Y.%m.%d.%H.%M)-${git_sha}"
 fi
 
 # Build through build.sh so the architecture pre-flight and the label arguments

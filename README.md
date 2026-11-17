@@ -418,12 +418,17 @@ RENDER_DEV=/dev/dri/renderD129 ./test.sh
 
 ### Publishing
 
-[`push.sh`](push.sh) publishes two tags: an immutable `date-commit` tag and a
-moving tag (`TAG`, `latest` by default; `VERSION` overrides the immutable name).
-It refuses to run on a tree with uncommitted changes, builds through
-[`build.sh`](build.sh) so the arch pre-flight and label arguments apply, runs
-[`test.sh`](test.sh) on the result, and pushes the immutable tag first — so a
-failure can never leave `latest` pointing at an untested image. Both scripts
+[`push.sh`](push.sh) publishes two tags: an immutable `YYYY.MM.DD.HH.MM-commit`
+tag — UTC build time plus the 7-character sha, e.g.
+`2026.11.17.02.40-48f6395` — and a moving tag (`TAG`, `latest` by default;
+`VERSION` overrides the immutable name). It refuses to run unless `git status`
+is completely empty: modified, staged and untracked files all count, because
+both the tag name and the image's `org.opencontainers.image.version` label claim
+to describe that commit, and they only mean something if nothing else was in the
+build context. Only git-ignored paths such as `tmp/` may exist. It then builds
+through [`build.sh`](build.sh) so the arch pre-flight and label arguments apply,
+runs [`test.sh`](test.sh) on the result, and pushes the immutable tag first — so
+a failure can never leave `latest` pointing at an untested image. Both scripts
 honour `IMAGE` and `TAG`.
 
 The image carries `/licenses/LICENSE` and `/licenses/NOTICE`, so a pulled copy
@@ -635,10 +640,6 @@ at `/licenses/LICENSE` and `/licenses/NOTICE`.
 
 There is no warranty and no support commitment; see
 [Purpose and Support Scope](#purpose-and-support-scope).
-
-## Contributing
-
-Contributions welcome! Please open an issue or submit a pull request.
 
 ## Related Projects
 
