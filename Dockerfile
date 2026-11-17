@@ -22,12 +22,17 @@ RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
 
 # 1. Install drivers and runtime libraries.
 # The Intel media driver (iHD) covers Gen8+ graphics; ~40 MB installed.
-# libva-drm2 lets VA-API talk to the DRM (Direct Rendering Manager).
 # ca-certificates is required if ffmpeg needs to pull via https.
-# mesa-va-drivers keeps the image usable on AMD/Generic GPUs. It is a virtual
-# package name that resolves to mesa-libgallium, which ffmpeg's own graphics
-# dependencies (libgbm1, libegl-mesa0) already pull in; listing it states the
-# intent and changes nothing about the image's size.
+# Three of the entries below are redundant: apt installs them anyway as
+# dependencies of packages listed above them. They stay as explicit statements
+# of intent, not because apt needs them — deleting them changes nothing about
+# what gets installed.
+#   libvpl2          hard dependency of libavcodec62 (ffmpeg is --enable-libvpl)
+#   libva-drm2       hard dependency of vainfo
+#   mesa-va-drivers  virtual name for mesa-libgallium, which libgbm1 and
+#                    libegl-mesa0 already pull in; it is what makes the image
+#                    usable on AMD/Generic GPUs, and it changes the image's
+#                    size by nothing at all.
 # No package versions are pinned: each build picks up the current archive
 # contents, including security updates for ffmpeg and the drivers.
 RUN apt-get update && \

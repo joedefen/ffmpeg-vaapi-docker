@@ -85,7 +85,7 @@ of any kind. Licences for the components redistributed inside the image are in
 1. **Linux kernel** with DRM (Direct Rendering Manager) support
 2. **`/dev/dri/` device nodes** must be present (typically `/dev/dri/renderD128`)
 3. **Permissions**: User must have access to `/dev/dri/` devices
-   - Add user to `video` or `render` group: `sudo usermod -aG video,render $USER`
+   - Add user to `video` or `render` group: `sudo usermod -aG video,render "$USER"`
    - Or run Docker with appropriate privileges
 4. **Docker** installed — this is the tested runtime. Podman probably works but is
    best effort and unverified (see [Podman](#podman-best-effort))
@@ -209,7 +209,7 @@ Run FFmpeg with hardware acceleration:
 ```bash
 docker run --rm \
     --device=/dev/dri:/dev/dri \
-    -v $(pwd):/workspace -w /workspace \
+    -v "$(pwd)":/workspace -w /workspace \
     joedefen/ffmpeg-vaapi-docker:latest \
     -i input.mp4 \
     -vaapi_device /dev/dri/renderD128 \
@@ -263,7 +263,7 @@ If this completes without errors, hardware acceleration is working.
 ```bash
 docker run --rm \
     --device=/dev/dri:/dev/dri \
-    -v $(pwd):/workspace \
+    -v "$(pwd)":/workspace \
     -w /workspace \
     joedefen/ffmpeg-vaapi-docker:latest \
     -i input.mp4 \
@@ -279,7 +279,7 @@ docker run --rm \
 ```bash
 docker run --rm \
     --device=/dev/dri:/dev/dri \
-    -v $(pwd):/workspace \
+    -v "$(pwd)":/workspace \
     -w /workspace \
     joedefen/ffmpeg-vaapi-docker:latest \
     -i input.mp4 \
@@ -295,7 +295,7 @@ docker run --rm \
 ```bash
 docker run --rm \
     --device=/dev/dri:/dev/dri \
-    -v $(pwd):/workspace \
+    -v "$(pwd)":/workspace \
     -w /workspace \
     joedefen/ffmpeg-vaapi-docker:latest \
     -hwaccel vaapi \
@@ -371,15 +371,37 @@ If step 2 changes nothing, the pin is already current — note the check date in
 [`tests/AUDIT.md`](tests/AUDIT.md) and move on. If it does change, commit the new
 digest on its own so the base-image bump is individually reviewable.
 
-Test the build:
+### Testing a local build
+
+[`test.sh`](test.sh) runs the smoke test against an image already on the machine:
+the VA-API driver must report a version, and a synthetic clip has to encode on
+the GPU. Three environment variables change what it does:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `IMAGE_NAME` | `joedefen/ffmpeg-vaapi-docker:latest` | Image under test. Point it at a local build instead of a published tag. |
+| `RENDER_DEV` | first `/dev/dri/renderD*` | Render node to test. Node numbering does not follow GPU order, so set this on multi-GPU hosts; when more than one node exists, the script lists them all and names the one it picked. |
+| `DURATION` | `10` | Seconds of 1080p null-source to encode. Lower it for a quick check, raise it to hold the GPU under load. |
+
+The encoder is taken from what `vainfo` advertises: `hevc_vaapi` when the GPU
+reports a HEVC encoding entrypoint, otherwise `h264_vaapi` with a warning that
+the image cannot serve its main use case (HEVC re-encoding) on that hardware.
 
 ```bash
 ./test.sh
+IMAGE_NAME=ffmpeg-vaapi-docker:labels DURATION=1 ./test.sh
+RENDER_DEV=/dev/dri/renderD129 ./test.sh
 ```
 
-To publish, [`push.sh`](push.sh) builds with `--pull` and pushes both `latest`
-and an immutable date+commit tag; set `VERSION` to override that tag. Both
-scripts honour `IMAGE` and `TAG` environment variables.
+### Publishing
+
+[`push.sh`](push.sh) publishes two tags: an immutable `date-commit` tag and a
+moving tag (`TAG`, `latest` by default; `VERSION` overrides the immutable name).
+It refuses to run on a tree with uncommitted changes, builds through
+[`build.sh`](build.sh) so the arch pre-flight and label arguments apply, runs
+[`test.sh`](test.sh) on the result, and pushes the immutable tag first — so a
+failure can never leave `latest` pointing at an untested image. Both scripts
+honour `IMAGE` and `TAG`.
 
 ## VA-API Details Worth Knowing
 

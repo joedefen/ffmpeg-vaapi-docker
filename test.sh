@@ -10,7 +10,9 @@ fail() {
     exit 1
 }
 
-# Auto-detect the first DRM render node unless the caller pinned one.
+# Auto-detect a DRM render node unless the caller pinned one. Node numbering
+# does not follow GPU order, so on multi-GPU hosts the lowest number is not
+# necessarily the adapter you mean: list them all and say which one is used.
 if [[ -z "${RENDER_DEV}" ]]; then
     shopt -s nullglob
     render_nodes=(/dev/dri/renderD*)
@@ -18,6 +20,10 @@ if [[ -z "${RENDER_DEV}" ]]; then
     [[ ${#render_nodes[@]} -gt 0 ]] ||
         fail "no /dev/dri/renderD* devices found on the host; is the DRM driver loaded?"
     RENDER_DEV="${render_nodes[0]}"
+    if [[ ${#render_nodes[@]} -gt 1 ]]; then
+        printf 'Render nodes found: %s\n' "${render_nodes[*]}"
+        printf 'Testing %s; re-run with RENDER_DEV to choose another.\n' "${RENDER_DEV}"
+    fi
 fi
 
 [[ -e "${RENDER_DEV}" ]] || fail "${RENDER_DEV} does not exist"
