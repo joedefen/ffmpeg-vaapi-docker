@@ -63,6 +63,7 @@ elif grep -Eq 'VAProfileH264High[[:space:]]*:[[:space:]]*VAEntrypointEnc' <<<"${
 else
     fail "this GPU/driver advertises neither HEVC nor H.264 encoding entrypoints"
 fi
+expected_codec="${encoder%%_*}"
 
 printf '\n--- Testing %s Hardware Encoding ---\n' "${encoder}"
 docker run --rm \
@@ -78,5 +79,59 @@ docker run --rm \
     -vf 'format=nv12,hwupload' \
     -c:v "${encoder}" \
     -f null -
+
+# Second pass: the README's "Basic Usage" example, as close to verbatim as a
+# test can get. The arguments below the container name are copied from it —
+# -i input.mp4, -vaapi_device, -vf format=nv12,hwupload, -qp 23, output.mkv —
+# so if those flags stop working, this fails. Only the input generation and
+# --user (so the output file is yours) are additions.
+workdir="$(mktemp -d)"
+trap 'rm -rf "${workdir}"' EXIT
+
+# The README passes the host's render GID and falls back to 992 when the host
+# has no "render" group; use the same expression so both paths are exercised.
+host_render_gid="$(getent group render | cut -d: -f3 || echo 992)"
+
+printf '\n--- Testing the documented Basic Usage example ---\n'
+docker run --rm \
+    --device "${RENDER_DEV}:${RENDER_DEV}" \
+    --group-add "${host_render_gid}" \
+    --user "$(id -u):$(id -g)" \
+    -v "${workdir}":/workspace \
+    -w /workspace \
+    "${IMAGE_NAME}" \
+    -hide_banner -loglevel error \
+    -f lavfi -i "testsrc=s=640x480:d=${DURATION}" \
+    -c:v libx264 -preset ultrafast \
+    input.mp4
+
+docker run --rm \
+    --device "${RENDER_DEV}:${RENDER_DEV}" \
+    --group-add "${host_render_gid}" \
+    --user "$(id -u):$(id -g)" \
+    -v "${workdir}":/workspace \
+    -w /workspace \
+    "${IMAGE_NAME}" \
+    -hide_banner -loglevel warning \
+    -i input.mp4 \
+    -vaapi_device "${RENDER_DEV}" \
+    -vf 'format=nv12,hwupload' \
+    -c:v "${encoder}" -qp 23 \
+    output.mkv
+
+[[ -s "${workdir}/output.mkv" ]] ||
+    fail "the README's Basic Usage example wrote no output (missing or 0 bytes)"
+
+actual_codec="$(docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "${workdir}":/workspace \
+    --entrypoint ffprobe \
+    "${IMAGE_NAME}" \
+    -v error -select_streams v:0 -show_entries stream=codec_name \
+    -of default=nw=1:nk=1 /workspace/output.mkv)"
+[[ "${actual_codec}" == "${expected_codec}" ]] ||
+    fail "the documented example produced '${actual_codec:-no video stream}', expected '${expected_codec}'"
+printf 'Documented example output: %s, %s bytes\n' "${actual_codec}" \
+    "$(stat -c %s "${workdir}/output.mkv")"
 
 printf '\nAll VA-API checks passed (%s).\n' "${encoder}"

@@ -184,11 +184,13 @@ most desktop Linux installs. For VA-API access it needs the host's render GID as
 a supplementary group; the image already includes a `render` group with GID 992,
 which matches most Debian/Ubuntu hosts.
 
-If your host's render group has a different GID, add it to every `docker run`
-command below:
+If your host's render group has a different GID, pass it with `--group-add`.
+The [Basic Usage](#basic-usage) example already does this — including the
+fallback to 992 for hosts with no `render` group — so copy that line into any
+example that lacks it:
 
 ```bash
---group-add "$(getent group render | cut -d: -f3)"
+--group-add "$(getent group render | cut -d: -f3 || echo 992)"
 ```
 
 On SELinux hosts (Fedora, RHEL), also add `--security-opt label=disable`, and add
@@ -209,6 +211,7 @@ Run FFmpeg with hardware acceleration:
 ```bash
 docker run --rm \
     --device=/dev/dri:/dev/dri \
+    --group-add "$(getent group render | cut -d: -f3 || echo 992)" \
     -v "$(pwd)":/workspace -w /workspace \
     joedefen/ffmpeg-vaapi-docker:latest \
     -i input.mp4 \
@@ -223,6 +226,12 @@ a device to talk to and only accepts frames that live on the GPU, so a software
 input has to be converted and uploaded. Drop them and FFmpeg writes a zero-byte
 file and reports `Conversion failed!`. See
 [Why `format=nv12,hwupload`](#why-formatnv12hwupload).
+
+`--group-add` passes your host's render GID into the container, falling back to
+992 (the image's own `render` group) when the host has no `render` group. It is
+not decoration: without the right GID the process cannot open the device. This
+exact command shape is what [`test.sh`](test.sh) runs on every test, so it stays
+honest.
 
 **Output paths must be absolute, or `-w` must be set.** The image defines no
 working directory, so the container starts in `/`, which uid 1000 cannot write to.
@@ -373,9 +382,11 @@ digest on its own so the base-image bump is individually reviewable.
 
 ### Testing a local build
 
-[`test.sh`](test.sh) runs the smoke test against an image already on the machine:
-the VA-API driver must report a version, and a synthetic clip has to encode on
-the GPU. Three environment variables change what it does:
+[`test.sh`](test.sh) runs two things against an image already on the machine: a
+synthetic 1080p null-source encode that proves the encoder works, and then the
+[Basic Usage](#basic-usage) command itself against a real file in a temp
+directory, checking that the output is non-empty and is the codec it expected.
+Three environment variables change what it does:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
@@ -568,12 +579,31 @@ Quality may be slightly lower than software encoders at equivalent bitrates, but
 
 ## Codec Support
 
-Codec support varies by hardware generation. Common codecs:
+Two different floors apply, and they are worth keeping apart:
 
-- **H.264 (AVC)**: Intel 5th gen+ (Broadwell/iHD) and AMD APUs
-- **HEVC (H.265)**: Intel 6th gen+ (Skylake) and newer AMD
-- **VP9**: Intel 9th gen+ (limited support) and RDNA+ AMD
-- **AV1**: Intel 11th gen+ (Arc GPUs) and RDNA 3+ AMD
+- **Driver floor.** The image ships only Intel's iHD driver, which starts at
+  Gen8 / Broadwell (2014). Older Intel graphics need the legacy i965 driver,
+  which is not installed, so pre-Gen8 chips do not work with this image at all.
+  On AMD the driver is Mesa's radeonsi, which covers GCN and newer.
+- **Codec floor.** What the silicon can encode varies by generation and is
+  independent of the driver.
+
+Approximate, from vendor documentation (not measured on every generation here):
+
+| Encoder | Intel (iHD) | AMD (radeonsi / Mesa) |
+| --- | --- | --- |
+| H.264 (AVC) | Gen8 / Broadwell (2014)+ | GCN-era (VCE) and newer |
+| HEVC 8-bit | Skylake / Gen9 (2015)+ | VCN 1.0 / Vega (2017)+ |
+| HEVC 10-bit | Kaby Lake / Gen9.5 (2017)+ | VCN 1.0+, per SKU |
+| VP9 | Kaby Lake (2017)+, 8-bit, encode support is spotty | decode only — no VP9 encoder |
+| AV1 | decode from Tiger Lake (Gen12); **encode only on Arc/DG2 and Meteor Lake+** — 11th gen is decode only | decode from RDNA 2; encode from RDNA 3 |
+
+Two rows are the ones people get wrong: 11th-gen Intel has no AV1 *encoder*
+(decode only), and VP9 encoding on Intel starts at Kaby Lake, not 9th gen.
+
+`vainfo` inside the container is the ground truth for the machine you are on: it
+lists `VAProfile*` next to `VAEntrypointEnc*`, and only `Enc` means encoding.
+[`test.sh`](test.sh) reads the same output to choose which encoder to test.
 
 Check your specific hardware for exact codec support.
 
