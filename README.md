@@ -4,7 +4,14 @@ FFmpeg with VA-API hardware acceleration for Intel Quick Sync and AMD graphics
 
 ## Overview
 
-This Docker image provides FFmpeg with VA-API (Video Acceleration API) support, enabling hardware-accelerated video encoding and decoding on Intel and AMD GPUs. It's designed to work out-of-the-box on Linux systems with compatible hardware.
+This Docker image provides FFmpeg with VA-API (Video Acceleration API) support,
+enabling hardware-accelerated video encoding and decoding on Intel and AMD GPUs.
+It is designed to work out-of-the-box on Linux systems with compatible hardware.
+
+**It builds and runs on x86-64 Linux only** (`linux/amd64`). The Intel media
+driver it depends on is not published for other architectures, so ARM hosts —
+Apple Silicon, ARM servers, ARM NAS boxes — are out of scope. See
+[Platform: amd64 only](#platform-amd64-only).
 
 The image is based on Ubuntu 26.04 LTS and includes:
 - FFmpeg from the Ubuntu 26.04 archive (8.0.1 at the time of writing, November 2026)
@@ -16,6 +23,31 @@ The image is based on Ubuntu 26.04 LTS and includes:
 The image is about 840 MB and runs as an unprivileged user (uid 1000). The Intel
 driver packages account for roughly 41 MB and are installed unconditionally, so
 the same image works on both Intel and AMD hosts.
+
+## Purpose and Support Scope
+
+This image has one job: give a personal video pipeline a predictable, working
+`ffmpeg` with VA-API hardware H.265 encoding, instead of whatever the host happens
+to have installed that week. It is published on Docker Hub only in case it spares
+someone else the same trouble.
+
+It is built and exercised for a deliberately narrow target:
+
+- **one workload** — re-encoding to H.265/HEVC. Both `hevc_vaapi` (hardware) and
+  `libx265` (software, present because Ubuntu builds FFmpeg with it) are
+  available; the hardware path is the reason this image exists
+- **one host class** — x86-64 Linux with an Intel GPU exposed through `/dev/dri`
+- **one runtime** — Docker, with the container running as uid 1000
+
+Everything outside that is best effort. There is no support, no roadmap, and no
+promise about your particular GPU, driver, distribution or FFmpeg version. If it
+works for you, that is a bonus; if it does not, this is a short Dockerfile and
+three short scripts, so fixing it yourself is realistic. Issues and pull requests
+may go unanswered.
+
+The software is MIT licensed (see [`LICENSE`](LICENSE)), which carries no warranty
+of any kind. Licences for the components redistributed inside the image are in
+[`NOTICE`](NOTICE).
 
 ## Hardware Requirements
 
@@ -34,6 +66,9 @@ the same image works on both Intel and AMD hosts.
 
 ### Unsupported Hardware
 
+- **Non-x86-64 hosts** — ARM servers, Apple Silicon, ARM NAS boxes. The image is
+  `linux/amd64` only, because no Intel media driver exists for other
+  architectures (see [Platform: amd64 only](#platform-amd64-only))
 - NVIDIA GPUs (use NVENC/NVDEC instead)
 - Systems without integrated or discrete graphics
 - Very old processors without hardware video acceleration
@@ -45,7 +80,81 @@ the same image works on both Intel and AMD hosts.
 3. **Permissions**: User must have access to `/dev/dri/` devices
    - Add user to `video` or `render` group: `sudo usermod -aG video,render $USER`
    - Or run Docker with appropriate privileges
-4. **Docker** or **Podman** installed
+4. **Docker** installed — this is the tested runtime. Podman probably works but is
+   best effort and unverified (see [Podman](#podman-best-effort))
+5. **An amd64 (x86-64) platform** — the image is built for `linux/amd64` only,
+   because the Intel media driver is not published for other architectures
+   (see [Platform: amd64 only](#platform-amd64-only))
+
+### Platform: amd64 only
+
+The image targets `linux/amd64` exclusively. `intel-media-va-driver-non-free` —
+the iHD driver that makes Intel Quick Sync work — is published in Ubuntu's
+`multiverse` component for `amd64` and for no other architecture. `ffmpeg`,
+`vainfo`, `libvpl2` and Mesa are available for `arm64` as well, but without the
+Intel driver the image would not do what its name says.
+
+Both [`build.sh`](build.sh) and the [`Dockerfile`](Dockerfile) refuse to build for
+any other architecture and explain why, rather than failing later inside `apt-get`
+with a bare "Unable to locate package". On an arm64 host:
+
+```text
+$ uname -m
+aarch64
+$ ./build.sh
+ERROR: this image targets linux/amd64 only; requested platform is 'linux/arm64'.
+       'intel-media-va-driver-non-free' is not published for arm64.
+       On an x86-64 host, omit --platform. To build under emulation anyway,
+       pass --platform linux/amd64 deliberately.
+```
+
+A plain `docker build` is guarded too, at `RUN` time. Note that cross-building
+`--platform linux/arm64` *from* an x86-64 host without emulation registered fails
+one step earlier with `exec /bin/sh: exec format error`, because the guard itself
+cannot execute; install binfmt support with
+`docker run --privileged --rm tonistiigi/binfmt --install arm64` if you want to
+cross-build.
+
+Building under emulation (Apple Silicon, ARM servers) works but defeats the
+purpose — there is no VA-API device to pass through, so you get a CPU-only
+`ffmpeg` on a slow emulated layer:
+
+```bash
+docker build --platform linux/amd64 -t ffmpeg-vaapi-docker:latest .
+```
+
+### Podman (best effort)
+
+Everything in this README is tested with Docker only. Podman is **untested and
+unsupported**: there is no Podman installation on the machine this image is
+developed on, so what follows is reasoned rather than verified.
+
+The image is an ordinary Docker image and should run. Rootless Podman is where it
+gets interesting — the container's `ubuntu` user (uid 1000) is mapped to a
+subordinate uid, and supplementary groups such as `render` are not inherited
+unless you ask:
+
+```bash
+podman run --rm \
+    --device /dev/dri \
+    --group-add keep-groups \
+    -v "$(pwd)":/work:z -w /work \
+    joedefen/ffmpeg-vaapi-docker:latest \
+    -vaapi_device /dev/dri/renderD128 \
+    -f lavfi -i testsrc=duration=1:size=640x480 \
+    -vf format=nv12,hwupload -c:v hevc_vaapi -y out.mkv
+```
+
+- `--group-add keep-groups` (Podman 3.4+, cgroup v2) passes your own supplementary
+  groups into the container, which is what grants access to the render node.
+- `:z` relabels the bind mount for SELinux; it is harmless where SELinux is absent.
+- `-w /work` is needed because the image defines no working directory of its own.
+- [`test.sh`](test.sh) and the `.sh` helpers invoke `docker` directly and will not
+  work under Podman.
+
+The `ffmpeg` arguments above are the ones verified with Docker on the development
+host; the Podman plumbing around them is not verified at all. If it does not work
+out, use Docker.
 
 ### Verify Your System
 
@@ -96,9 +205,30 @@ docker run --rm \
     -v $(pwd):/workspace -w /workspace \
     joedefen/ffmpeg-vaapi-docker:latest \
     -i input.mp4 \
+    -vaapi_device /dev/dri/renderD128 \
+    -vf 'format=nv12,hwupload' \
     -c:v hevc_vaapi -qp 23 \
     output.mkv
 ```
+
+`-vaapi_device` and `-vf format=nv12,hwupload` are not optional: the encoder needs
+a device to talk to and only accepts frames that live on the GPU, so a software
+input has to be converted and uploaded. Drop them and FFmpeg writes a zero-byte
+file and reports `Conversion failed!`. See
+[Why `format=nv12,hwupload`](#why-formatnv12hwupload).
+
+**Output paths must be absolute, or `-w` must be set.** The image defines no
+working directory, so the container starts in `/`, which uid 1000 cannot write to.
+Without `-w`, a relative output path fails like this:
+
+```text
+[out#0/matroska @ 0x55ac57…] Error opening output out.mkv: Permission denied
+Error opening output files: Permission denied
+```
+
+Either keep `-w /workspace` as above, or mount a volume and use absolute paths
+inside it (`-v "$(pwd)":/workspace … /workspace/output.mkv`). The second form needs
+no `-w`, which helps when input and output live in different directories.
 
 ### Test Hardware Acceleration
 
@@ -204,15 +334,35 @@ Build the image:
 docker build -t joedefen/ffmpeg-vaapi-docker:latest .
 ```
 
-The base image is pinned by digest in the [`Dockerfile`](Dockerfile) for reproducible
-builds. To pick up Ubuntu point releases and security updates, refresh the digest
-deliberately:
+### Pinning and refreshing the base image
+
+The `FROM` line pins `ubuntu:26.04` to a fixed digest, so the base layers never
+change unless someone edits the file. That is predictability, not byte-for-byte
+reproducibility: the `RUN` layer installs unpinned package names, so `ffmpeg` and
+the drivers follow whatever the archive serves on the day you build. That is how
+security updates reach the image.
+
+Nothing refreshes the digest automatically, so do it deliberately — monthly, or
+when Ubuntu publishes a point release:
 
 ```bash
+# 1. Read the tag's current digest
 docker pull ubuntu:26.04
 docker inspect ubuntu:26.04 --format '{{index .RepoDigests 0}}'
-# then update the FROM line in the Dockerfile
+#    -> ubuntu@sha256:d66b366d...
+
+# 2. Rewrite the FROM line in place (a no-op if the pin is already current)
+digest="$(docker inspect ubuntu:26.04 --format '{{index .RepoDigests 0}}' | sed 's/^ubuntu@//')"
+sed -i -E "s|^FROM ubuntu:26\.04@sha256:[0-9a-f]{64}$|FROM ubuntu:26.04@${digest}|" Dockerfile
+
+# 3. Confirm the diff is exactly one changed digest, then rebuild and test
+git diff Dockerfile
+./build.sh && ./test.sh
 ```
+
+If step 2 changes nothing, the pin is already current — note the check date in
+[`tests/AUDIT.md`](tests/AUDIT.md) and move on. If it does change, commit the new
+digest on its own so the base-image bump is individually reviewable.
 
 Test the build:
 
@@ -312,6 +462,16 @@ sg render -c 'vainfo'
 If the container itself still cannot open the device, pass the host render GID:
 `--group-add "$(getent group render | cut -d: -f3)"`.
 
+Two different problems share this wording — check which one you have:
+
+| Message mentions | Cause | Fix |
+|---|---|---|
+| `/dev/dri/renderD128`, `cannot open device` | group/GID access to the GPU | the steps above |
+| `Error opening output <file>: Permission denied` | no `-w` and a relative output path, so FFmpeg tries to write to `/` | pass `-w`, or use an absolute path inside a mounted volume (see [Basic Usage](#basic-usage)) |
+
+The second one has nothing to do with VA-API: the encode never starts, and the
+message appears before any frames are processed.
+
 ### No Hardware Acceleration
 
 If hardware acceleration isn't working:
@@ -366,6 +526,9 @@ The container image also redistributes third-party software, including the
 non-free Intel media driver and a GPL-enabled FFmpeg build. The MIT license does
 not cover those components; see [NOTICE](NOTICE) for the component list, and
 `/usr/share/doc/<package>/copyright` inside the image for authoritative texts.
+
+There is no warranty and no support commitment; see
+[Purpose and Support Scope](#purpose-and-support-scope).
 
 ## Contributing
 
