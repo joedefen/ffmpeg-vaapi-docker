@@ -23,24 +23,17 @@ RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
 # 1. Install drivers and runtime libraries.
 # The Intel media driver (iHD) covers Gen8+ graphics; ~40 MB installed.
 # ca-certificates is required if ffmpeg needs to pull via https.
-# Two of the entries below are redundant by design: apt installs them anyway as
-# hard dependencies, and they stay as explicit statements of intent.
-#   libvpl2          hard dependency of libavcodec62 (ffmpeg is --enable-libvpl)
-#   libva-drm2       hard dependency of vainfo
-# mesa-va-drivers is a different case and is here for a reason worth spelling out.
-# It is a virtual name for mesa-libgallium, the VA-API driver for AMD (radeonsi)
-# and generic GPUs. Today apt installs mesa-libgallium anyway, but not for a
-# reason this image controls: the ffmpeg .deb depends on libsdl2-2.0-0 for
-# ffplay, which pulls libsdl2-classic -> libgbm1 -> mesa-libgallium ->
-# libllvm21. Nothing in ffmpeg or ffprobe links SDL (libavdevice has no SDL
-# dependency and `ffmpeg -devices` lists no "sdl" device), so that chain is an
-# accident of shipping ffplay. Listing mesa-va-drivers is what makes AMD support
-# intentional rather than incidental: if a future ffmpeg package drops that
-# dependency, this line keeps the driver installed. It is also the honest price
-# of AMD support — the driver plus its LLVM backend is ~176 MiB installed — and
-# deleting the line saves nothing today (measured: the image is the same size).
-# No package versions are pinned: each build picks up the current archive
-# contents, including security updates for ffmpeg and the drivers.
+# libvpl2 and libva-drm2 are hard dependencies of libavcodec62 and vainfo; they
+# stay as explicit statements of intent.
+# mesa-va-drivers is a virtual name for mesa-libgallium, the AMD (radeonsi)
+# VA-API driver. apt installs it today anyway, by accident: the ffmpeg .deb
+# depends on libsdl2-2.0-0 for ffplay, pulling libsdl2-classic -> libgbm1 ->
+# mesa-libgallium -> libllvm21. Neither ffmpeg nor ffprobe links SDL. Listing
+# mesa-va-drivers keeps AMD working if a future ffmpeg drops that dependency;
+# deleting the line saves zero bytes today (measured: same image size). The
+# driver plus its LLVM backend is ~176 MiB.
+# Package versions are not pinned: each build takes the archive's current
+# contents, security updates included.
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ffmpeg \
